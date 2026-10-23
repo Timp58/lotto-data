@@ -103,7 +103,7 @@ def git_commit_and_push():
         )
 
     # 1. Pull latest changes first to keep local branch in sync with remote
-    pull = run_git(["pull", "--rebase", "origin", "main"])
+    pull = run_git(["pull", "--rebase", "--autostash", "origin", "main"])
     if pull.returncode != 0:
         logging.error("Git pull failed: %s", pull.stderr)
         return
@@ -128,3 +128,8 @@ def git_commit_and_push():
         logging.info("Git push succeeded.")
     else:
         logging.error("Git push failed: %s", push.stderr)
+
+
+if __name__ == "__main__":
+    fetch_and_convert()
+    git_commit_and_push()
