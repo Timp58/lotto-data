@@ -16,6 +16,7 @@ import requests
 REPO_DIR = Path(__file__).resolve().parent
 CSV_PATH = REPO_DIR / "latest_lottery_draw.csv"
 LOG_PATH = REPO_DIR / "update_lotto.log"
+CRON_LOG_PATH = REPO_DIR / "cron_output.log"
 
 LOTTO_XML_URL = "https://www.national-lottery.co.uk/results/lotto/draw-history/xml"
 USER_AGENT = (
@@ -24,7 +25,10 @@ USER_AGENT = (
 )
 
 logging.basicConfig(
-    filename=LOG_PATH,
+    handlers=[
+        logging.FileHandler(LOG_PATH),
+        logging.FileHandler(CRON_LOG_PATH),
+    ],
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
