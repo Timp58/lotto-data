@@ -95,11 +95,26 @@ def fetch_and_convert():
 
     logging.info("Saved %d records to %s", len(rows), CSV_PATH)
 
+def get_latest_draw():
+    try:
+        with CSV_PATH.open(newline="", encoding="utf-8") as csv_file:
+            return next(csv.DictReader(csv_file), {})
+    except (OSError, csv.Error) as err:
+        logging.warning("Could not read latest draw from CSV: %s", err)
+        return {}
+
 def write_run_status(succeeded):
     timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
     result = "Succeeded" if succeeded else "Failed"
+    latest_draw = get_latest_draw()
+    draw_date = latest_draw.get("DrawDate") or "Unavailable"
+    draw_number = latest_draw.get("DrawNumber") or "Unavailable"
     STATUS_PATH.write_text(
-        f"# Lottery updater status\n\n- Last run: {timestamp}\n- Result: {result}\n",
+        f"# Lottery updater status\n\n"
+        f"- Last run: {timestamp}\n"
+        f"- Result: {result}\n"
+        f"- Results date: {draw_date}\n"
+        f"- Draw number: {draw_number}\n",
         encoding="utf-8",
     )
 
