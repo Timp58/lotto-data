@@ -6,6 +6,7 @@ and commits/pushes changes to the dedicated repository.
 """
 
 import csv
+from datetime import datetime
 import logging
 from pathlib import Path
 import subprocess
@@ -15,6 +16,7 @@ import requests
 
 REPO_DIR = Path(__file__).resolve().parent
 CSV_PATH = REPO_DIR / "latest_lottery_draw.csv"
+STATUS_PATH = REPO_DIR / "UPDATE_STATUS.md"
 LOG_PATH = REPO_DIR / "update_lotto.log"
 CRON_LOG_PATH = REPO_DIR / "cron_output.log"
 
@@ -43,13 +45,9 @@ def fetch_and_convert():
     logging.info("Downloading XML from National Lottery...")
     headers = {"User-Agent": USER_AGENT}
 
-    try:
-        response = requests.get(LOTTO_XML_URL, headers=headers, timeout=30)
-        response.raise_for_status()
-        root = ET.fromstring(response.content)
-    except Exception as err:
-        logging.error("Failed to download or parse XML: %s", err)
-        sys.exit(1)
+    response = requests.get(LOTTO_XML_URL, headers=headers, timeout=30)
+    response.raise_for_status()
+    root = ET.fromstring(response.content)
 
     rows = []
     for game in root.findall(".//game"):
@@ -97,6 +95,14 @@ def fetch_and_convert():
 
     logging.info("Saved %d records to %s", len(rows), CSV_PATH)
 
+def write_run_status(succeeded):
+    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+    result = "Succeeded" if succeeded else "Failed"
+    STATUS_PATH.write_text(
+        f"# Lottery updater status\n\n- Last run: {timestamp}\n- Result: {result}\n",
+        encoding="utf-8",
+    )
+
 def git_commit_and_push():
     def run_git(args):
         return subprocess.run(
@@ -110,30 +116,45 @@ def git_commit_and_push():
     pull = run_git(["pull", "--rebase", "--autostash", "origin", "main"])
     if pull.returncode != 0:
         logging.error("Git pull failed: %s", pull.stderr)
-        return
+        return False
 
     # 2. Stage changes
-    run_git(["add", str(CSV_PATH)])
+    stage = run_git(["add", str(CSV_PATH), str(STATUS_PATH)])
+    if stage.returncode != 0:
+        logging.error("Git stage failed: %s", stage.stderr)
+        return False
     diff = run_git(["diff", "--staged", "--quiet"])
 
     if diff.returncode == 0:
-        logging.info("No changes to CSV detected.")
-        return
+        logging.info("No changes to CSV or run status detected.")
+        return True
 
     # 3. Commit
-    commit = run_git(["commit", "-m", "chore: update latest_lottery_draw.csv"])
+    commit = run_git(["commit", "-m", "chore: update lottery data and run status"])
     if commit.returncode != 0:
         logging.error("Git commit failed: %s", commit.stderr)
-        return
+        return False
 
     # 4. Push
     push = run_git(["push", "-u", "origin", "main"])
     if push.returncode == 0:
         logging.info("Git push succeeded.")
+        return True
     else:
         logging.error("Git push failed: %s", push.stderr)
+        return False
 
 
 if __name__ == "__main__":
-    fetch_and_convert()
-    git_commit_and_push()
+    try:
+        fetch_and_convert()
+    except Exception:
+        logging.exception("Lottery update failed.")
+        write_run_status(False)
+        git_commit_and_push()
+        sys.exit(1)
+
+    write_run_status(True)
+    if not git_commit_and_push():
+        write_run_status(False)
+        sys.exit(1)
